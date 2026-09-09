@@ -1317,11 +1317,9 @@ function recalcularVentaInline(id){
   const margen = parseFloat((document.getElementById(`e-margen-${id}`).value||'').replace(',','.'));
   const presentacion = document.getElementById(`e-present-${id}`).value;
   const venta = calcularVentaPorMargen(costo, margen);
-  if(venta!==null){
-    document.getElementById(`e-venta-${id}`).value = venta;
-    const kilo = calcularPrecioKiloAuto(costo, margen, presentacion);
-    if(kilo!==null) document.getElementById(`e-kilo-${id}`).value = kilo;
-  }
+  if(venta!==null) document.getElementById(`e-venta-${id}`).value = venta;
+  const kilo = calcularPrecioKiloAuto(costo, presentacion);
+  if(kilo!==null) document.getElementById(`e-kilo-${id}`).value = kilo;
 }
 
 async function guardarEdicionInline(id){
@@ -1464,12 +1462,11 @@ function kgDePresentacion(presentacion){
   const kg = m ? parseFloat(m[1]) : null;
   return (kg && kg>0) ? kg : null;
 }
-function calcularPrecioKiloAuto(costo, margenPct, presentacion){
+function calcularPrecioKiloAuto(costo, presentacion){
   const kg = kgDePresentacion(presentacion);
   if(kg===null) return null;
   if(costo===null || costo===undefined || isNaN(costo) || costo<=0) return null;
-  if(margenPct===null || margenPct===undefined || isNaN(margenPct)) return null;
-  const base = calcularVentaPorMargen(costo, margenPct/2); // mitad del margen, misma cuenta costo÷(1-margen/100)
+  const base = calcularVentaPorMargen(costo, 50); // margen fijo del 50% (costo ÷ 0.5), no depende del margen cargado en el producto
   if(base===null) return null;
   return Math.ceil((base/kg)/100)*100;
 }
@@ -1483,19 +1480,18 @@ function recalcularVentaSheet(){
     hint.innerHTML = `<div class="calc-hint" style="color:var(--rust); background:var(--rust-bg);">El margen tiene que ser menor a 100%</div>`;
     return;
   }
+  let hintParts = [];
   const venta = calcularVentaPorMargen(costo, margen);
   if(venta!==null){
     document.getElementById('fVenta').value = venta;
-    let hintTxt = `Calculado: costo ${fmtMoney(costo)} ÷ (1 - ${margen}%) = venta ${fmtMoney(venta)}`;
-    const kilo = calcularPrecioKiloAuto(costo, margen, presentacion);
-    if(kilo!==null){
-      document.getElementById('fKilo').value = kilo;
-      hintTxt += ` · Suelto x kilo (costo con mitad del margen ÷ ${kgDePresentacion(presentacion)} kg): ${fmtMoney(kilo)}/kg`;
-    }
-    hint.innerHTML = `<div class="calc-hint">${hintTxt}</div>`;
-  } else {
-    hint.innerHTML = '';
+    hintParts.push(`costo ${fmtMoney(costo)} ÷ (1 - ${margen}%) = venta ${fmtMoney(venta)}`);
   }
+  const kilo = calcularPrecioKiloAuto(costo, presentacion);
+  if(kilo!==null){
+    document.getElementById('fKilo').value = kilo;
+    hintParts.push(`Suelto x kilo (costo ÷ 0.5 ÷ ${kgDePresentacion(presentacion)} kg): ${fmtMoney(kilo)}/kg`);
+  }
+  hint.innerHTML = hintParts.length ? `<div class="calc-hint">Calculado: ${hintParts.join(' · ')}</div>` : '';
 }
 async function guardarProducto(){
   if(!tienePermiso('editarPrecios')) return;
