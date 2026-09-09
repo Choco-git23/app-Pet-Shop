@@ -184,6 +184,11 @@
   .btn:disabled{opacity:.5; cursor:not-allowed;}
   .calc-hint{font-size:11.5px; color:var(--ok-ink); background:var(--ok-bg); padding:6px 10px; border-radius:8px;}
 
+  .mov-item-row{display:grid; grid-template-columns:1fr 58px 90px 26px; gap:6px; align-items:center; margin-top:8px;}
+  .mov-item-row input{padding:9px 10px; border-radius:10px; border:1px solid var(--line-strong); font-size:13.5px; box-sizing:border-box; width:100%; font-family:inherit;}
+  .mov-item-remove{border:none; background:none; color:var(--rust); font-size:19px; cursor:pointer; line-height:1; padding:4px;}
+  .mov-item-subtotal{grid-column:1 / -1; margin-top:-2px; font-size:11.5px; color:var(--ink-soft);}
+
   .empty{
     text-align:center; padding:60px 20px 96px; color:var(--ink-soft);
   }
@@ -608,19 +613,28 @@
       <div style="display:grid; gap:12px;">
         <div class="field">
           <label>Tipo de movimiento</label>
-          <select id="movTipo" onchange="recalcMontoDesdeProducto()"></select>
+          <select id="movTipo" onchange="onCambioTipoMovimiento()"></select>
         </div>
 
-        <div class="field">
-          <label>Producto de la lista de precios (opcional)</label>
-          <input type="text" id="movProducto" list="productoOptions" placeholder="Buscar producto…" oninput="onCambioProductoMov()" autocomplete="off">
-          <datalist id="productoOptions"></datalist>
+        <div id="movProductoUnicoWrap">
+          <div class="field">
+            <label>Producto de la lista de precios (opcional)</label>
+            <input type="text" id="movProducto" list="productoOptions" placeholder="Buscar producto…" oninput="onCambioProductoMov()" autocomplete="off">
+            <datalist id="productoOptions"></datalist>
+          </div>
+          <div class="field-row" id="movCantidadRow" style="display:none;">
+            <div class="field"><label>Cantidad</label><input type="text" inputmode="decimal" id="movCantidad" value="1" oninput="recalcMontoDesdeProducto()"></div>
+            <div class="field"><label>Precio unitario</label><input type="text" id="movPrecioUnitario" readonly style="opacity:.75;"></div>
+          </div>
+          <div id="movProductoHint"></div>
         </div>
-        <div class="field-row" id="movCantidadRow" style="display:none;">
-          <div class="field"><label>Cantidad</label><input type="text" inputmode="decimal" id="movCantidad" value="1" oninput="recalcMontoDesdeProducto()"></div>
-          <div class="field"><label>Precio unitario</label><input type="text" id="movPrecioUnitario" readonly style="opacity:.75;"></div>
+
+        <div class="field" id="movItemsWrap" style="display:none;">
+          <label>Productos de esta compra</label>
+          <div id="movItemsList"></div>
+          <button type="button" class="btn btn-ghost" style="width:100%; margin-top:8px;" onclick="agregarLineaCompra()">+ Agregar producto</button>
+          <div class="pct-hint" style="margin-top:8px;">El monto se calcula solo, sumando lo que pongas en cada línea. Si dejás todas las líneas vacías, podés cargar la compra como un solo monto con el campo de abajo (sin vincular productos).</div>
         </div>
-        <div id="movProductoHint"></div>
 
         <div class="field">
           <label>Método de pago</label>
@@ -2045,6 +2059,99 @@ function recalcMontoDesdeProducto(){
   hint.innerHTML = `<div class="calc-hint">Calculado: ${fmtMoney(unit)} (${origen}) × ${cantidad} = ${fmtMoney(unit*cantidad)}</div>`;
 }
 
+/* ---------- Compra con varios productos a la vez ----------
+   Solo para movimientos NUEVOS de tipo "compra": en vez de limitar a un único
+   producto por movimiento, se arma una lista de líneas (producto + cantidad +
+   costo unitario) y al guardar se crea un movimiento de caja por cada línea,
+   todos con la misma fecha/hora/método de pago. Si no se carga ninguna línea,
+   se guarda como antes: un solo movimiento con el monto ingresado a mano, sin
+   producto vinculado. Editar un movimiento ya creado sigue siendo siempre de
+   a uno (cada línea generada queda como un movimiento independiente y normal). */
+let movItemsCompra = [];
+
+function modoMultiActivo(){
+  return document.getElementById('movTipo').value==='compra' && cajaEditId===null;
+}
+
+function actualizarModoMovimiento(){
+  const multi = modoMultiActivo();
+  document.getElementById('movProductoUnicoWrap').style.display = multi ? 'none' : '';
+  document.getElementById('movItemsWrap').style.display = multi ? '' : 'none';
+  if(multi){
+    if(movItemsCompra.length===0) agregarLineaCompra();
+    else renderMovItemsList();
+  }
+}
+
+function onCambioTipoMovimiento(){
+  actualizarModoMovimiento();
+  recalcMontoDesdeProducto();
+}
+
+function renderMovItemsList(){
+  const cont = document.getElementById('movItemsList');
+  cont.innerHTML = movItemsCompra.map((item, i)=>{
+    const val = item.producto ? `${item.producto.marca} — ${item.producto.desc}${item.producto.presentacion ? ' ('+item.producto.presentacion+')' : ''} · ${nombreAnexo(item.producto.anexoId)}` : '';
+    const subtxt = item.producto ? `Subtotal: ${fmtMoney(Math.round((item.cantidad||0)*(item.costoUnitario||0)))}` : '';
+    return `<div class="mov-item-row">
+      <input type="text" list="productoOptions" placeholder="Buscar producto…" value="${escapeAttr(val)}" oninput="onCambioProductoLinea(${i}, this.value)" autocomplete="off">
+      <input type="text" inputmode="decimal" placeholder="Cant." value="${item.cantidad||''}" oninput="onCambioCantidadLinea(${i}, this.value)">
+      <input type="text" inputmode="numeric" placeholder="Costo u." value="${item.costoUnitario||''}" oninput="onCambioCostoLinea(${i}, this.value)">
+      <button type="button" class="mov-item-remove" onclick="quitarLineaCompra(${i})" title="Quitar">✕</button>
+      <div class="mov-item-subtotal" id="movItemSubtotal_${i}">${subtxt}</div>
+    </div>`;
+  }).join('');
+  recalcMontoCompraMulti();
+}
+
+function actualizarSubtotalLinea(i){
+  const item = movItemsCompra[i];
+  const el = document.getElementById('movItemSubtotal_'+i);
+  if(el) el.textContent = item && item.producto ? `Subtotal: ${fmtMoney(Math.round((item.cantidad||0)*(item.costoUnitario||0)))}` : '';
+}
+
+function onCambioProductoLinea(i, val){
+  const p = movProductoMap[val] || null;
+  movItemsCompra[i].producto = p;
+  if(p){
+    if(!movItemsCompra[i].costoUnitario){
+      movItemsCompra[i].costoUnitario = (p.costo!==null && p.costo>0) ? p.costo : p.precioVenta;
+      const costoInput = document.getElementById('movItemsList').children[i]?.querySelectorAll('input')[2];
+      if(costoInput) costoInput.value = movItemsCompra[i].costoUnitario;
+    }
+    if(!movItemsCompra[i].cantidad){
+      movItemsCompra[i].cantidad = 1;
+      const cantInput = document.getElementById('movItemsList').children[i]?.querySelectorAll('input')[1];
+      if(cantInput) cantInput.value = 1;
+    }
+  }
+  actualizarSubtotalLinea(i);
+  recalcMontoCompraMulti();
+}
+function onCambioCantidadLinea(i, val){
+  movItemsCompra[i].cantidad = parseFloat((val||'').replace(',','.')) || 0;
+  actualizarSubtotalLinea(i);
+  recalcMontoCompraMulti();
+}
+function onCambioCostoLinea(i, val){
+  movItemsCompra[i].costoUnitario = Math.round(parseFloat((val||'').replace(',','.'))||0);
+  actualizarSubtotalLinea(i);
+  recalcMontoCompraMulti();
+}
+function agregarLineaCompra(){
+  movItemsCompra.push({producto:null, cantidad:1, costoUnitario:0});
+  renderMovItemsList();
+}
+function quitarLineaCompra(i){
+  movItemsCompra.splice(i,1);
+  if(movItemsCompra.length===0) movItemsCompra.push({producto:null, cantidad:1, costoUnitario:0});
+  renderMovItemsList();
+}
+function recalcMontoCompraMulti(){
+  const total = movItemsCompra.reduce((acc,it)=> acc + (it.producto ? Math.round((it.cantidad||0)*(it.costoUnitario||0)) : 0), 0);
+  if(total>0) document.getElementById('movMonto').value = total;
+}
+
 function abrirNuevoMovimiento(){
   if(!tienePermiso('cargarCaja')) return;
   cajaEditId = null;
@@ -2062,7 +2169,9 @@ function abrirNuevoMovimiento(){
   document.getElementById('movProductoHint').innerHTML = '';
   document.getElementById('movAnexo').innerHTML = '<option value="">General</option>' + anexos.map(a=>`<option value="${a.id}">${escapeHtml(a.nombre)}</option>`).join('');
   document.getElementById('movDeleteBtn').style.display = 'none';
+  movItemsCompra = [];
   poblarProductoOptionsMov();
+  actualizarModoMovimiento();
   document.getElementById('movSheetBackdrop').classList.add('show');
 }
 
@@ -2095,6 +2204,7 @@ function abrirEditarMovimiento(id){
       document.getElementById('movCantidadRow').style.display = 'grid';
     }
   }
+  actualizarModoMovimiento(); // cajaEditId ya está seteado, así que esto siempre deja el modo de un solo producto
   document.getElementById('movSheetBackdrop').classList.add('show');
 }
 
@@ -2108,9 +2218,40 @@ async function guardarMovimiento(){
   const metodo = document.getElementById('movMetodo').value;
   const fecha = document.getElementById('movFecha').value || hoyISO();
   const hora = document.getElementById('movHora').value || horaAhora();
-  const monto = Math.round(parseFloat((document.getElementById('movMonto').value||'0').replace(',','.'))||0);
-  const detalle = document.getElementById('movDetalle').value.trim();
+  const detalleBase = document.getElementById('movDetalle').value.trim();
   const anexoId = document.getElementById('movAnexo').value || null;
+
+  // Compra con varios productos: si hay al menos una línea cargada, se crea un
+  // movimiento de caja por cada producto (misma fecha/hora/método), en vez del
+  // único movimiento de siempre. Si no cargaron ninguna línea, sigue de largo
+  // y se guarda como un movimiento normal (compatibilidad con "compra sin producto").
+  if(modoMultiActivo()){
+    const lineas = movItemsCompra.filter(it=> it.producto && (it.cantidad||0)>0 && (it.costoUnitario||0)>0);
+    if(lineas.length>0){
+      let nextId = caja.length ? Math.max(...caja.map(x=>x.id))+1 : 1;
+      const grupoCompra = Date.now();
+      let cargados = 0;
+      for(const linea of lineas){
+        const montoLinea = Math.round((linea.cantidad||0)*(linea.costoUnitario||0));
+        if(!montoLinea || montoLinea<=0) continue;
+        const detalleLinea = detalleBase ? `${detalleBase} — ${linea.producto.marca} — ${linea.producto.desc}` : `${linea.producto.marca} — ${linea.producto.desc}`;
+        const nuevo = {id:nextId++, tipo, metodo, fecha, hora, monto:montoLinea, detalle:detalleLinea, anexoId, productoId:linea.producto.id, cantidad:linea.cantidad, registradoPor: currentName, creadoTs: Date.now(), grupoCompra};
+        caja.push(nuevo);
+        aplicarEfectoStock(nuevo, 1);
+        cargados++;
+      }
+      if(cargados===0){ mostrarToast('Revisá las líneas: falta cantidad o costo en los productos que agregaste'); return; }
+      await guardarCaja();
+      await guardarStorage(); // el stock vive en "productos"
+      cerrarMovSheet();
+      render();
+      mostrarToast(`Compra cargada: ${cargados} producto(s)`);
+      return;
+    }
+  }
+
+  const monto = Math.round(parseFloat((document.getElementById('movMonto').value||'0').replace(',','.'))||0);
+  const detalle = detalleBase;
   const productoId = movProductoSeleccionado ? movProductoSeleccionado.id : null;
   const cantidad = movProductoSeleccionado ? (parseFloat((document.getElementById('movCantidad').value||'1').replace(',','.'))||1) : null;
   if(!monto || monto<=0){ mostrarToast('Poné un monto mayor a 0'); return; }
