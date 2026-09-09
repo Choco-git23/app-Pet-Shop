@@ -1466,9 +1466,8 @@ function calcularPrecioKiloAuto(costo, presentacion){
   const kg = kgDePresentacion(presentacion);
   if(kg===null) return null;
   if(costo===null || costo===undefined || isNaN(costo) || costo<=0) return null;
-  const base = calcularVentaPorMargen(costo, 50); // margen fijo del 50% (costo ÷ 0.5), no depende del margen cargado en el producto
-  if(base===null) return null;
-  return Math.ceil((base/kg)/100)*100;
+  const base = costo*1.5; // costo + 50% (no depende del margen cargado en el producto)
+  return Math.round(base/kg);
 }
 
 function recalcularVentaSheet(){
@@ -1489,7 +1488,7 @@ function recalcularVentaSheet(){
   const kilo = calcularPrecioKiloAuto(costo, presentacion);
   if(kilo!==null){
     document.getElementById('fKilo').value = kilo;
-    hintParts.push(`Suelto x kilo (costo ÷ 0.5 ÷ ${kgDePresentacion(presentacion)} kg): ${fmtMoney(kilo)}/kg`);
+    hintParts.push(`Suelto x kilo (costo + 50% ÷ ${kgDePresentacion(presentacion)} kg): ${fmtMoney(kilo)}/kg`);
   }
   hint.innerHTML = hintParts.length ? `<div class="calc-hint">Calculado: ${hintParts.join(' · ')}</div>` : '';
 }
