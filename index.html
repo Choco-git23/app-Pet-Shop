@@ -479,7 +479,7 @@
         </div>
         <div class="field">
           <label>Presentación (opcional)</label>
-          <input type="text" id="fPresent" placeholder="Ej: 15 kg, x3 unid, 500 ml">
+          <input type="text" id="fPresent" placeholder="Ej: 15 kg, x3 unid, 500 ml" oninput="recalcularVentaSheet()">
         </div>
         <div class="field-row">
           <div class="field">
@@ -1259,7 +1259,7 @@ function renderLista(){
                 <div class="field"><label>Marca</label><input type="text" id="e-marca-${p.id}" value="${escapeAttr(p.marca)}"></div>
               </div>
               <div class="field"><label>Descripción</label><input type="text" id="e-desc-${p.id}" value="${escapeAttr(p.desc)}"></div>
-              <div class="field"><label>Presentación</label><input type="text" id="e-present-${p.id}" value="${escapeAttr(p.presentacion||'')}"></div>
+              <div class="field"><label>Presentación</label><input type="text" id="e-present-${p.id}" value="${escapeAttr(p.presentacion||'')}" oninput="recalcularVentaInline(${p.id})"></div>
               <div class="field-row">
                 <div class="field"><label>Costo</label><div class="money-wrap"><span class="money-sign">$</span><input type="text" inputmode="numeric" id="e-costo-${p.id}" value="${p.costo ?? ''}" oninput="recalcularVentaInline(${p.id})"></div></div>
                 <div class="field"><label>Margen %</label><input type="text" inputmode="decimal" id="e-margen-${p.id}" value="${p.margenPct ?? ''}" oninput="recalcularVentaInline(${p.id})"></div>
@@ -1302,8 +1302,11 @@ function toggleRow(id){
 function recalcularVentaInline(id){
   const costo = parseFloat((document.getElementById(`e-costo-${id}`).value||'').replace(',','.'));
   const margen = parseFloat((document.getElementById(`e-margen-${id}`).value||'').replace(',','.'));
+  const presentacion = document.getElementById(`e-present-${id}`).value;
   if(!isNaN(costo) && !isNaN(margen)){
     document.getElementById(`e-venta-${id}`).value = Math.round(costo*(1+margen/100));
+    const kilo = calcularPrecioKiloAuto(costo, margen, presentacion);
+    if(kilo!==null) document.getElementById(`e-kilo-${id}`).value = kilo;
   }
 }
 
@@ -1435,14 +1438,42 @@ function poblarDatalist(){
   const dl = document.getElementById('marcaOptions');
   dl.innerHTML = marcasUnicas(document.getElementById('fAnexo').value).map(([m])=>`<option value="${escapeAttr(m)}">`).join('');
 }
+/* ---------- Precio suelto por kilo, calculado automáticamente ----------
+   Regla del negocio: costo + la mitad del margen de ganancia (no el margen entero),
+   dividido por los kilos que tiene la presentación (ej: "20 kg" → 20), redondeado
+   siempre PARA ARRIBA al múltiplo de 100 más cercano (ej: 2645 → 2700). Si no se
+   puede sacar un número de kilos de la presentación (productos que no son a granel,
+   como correas o accesorios), no se toca el campo — sigue siendo manual. */
+function kgDePresentacion(presentacion){
+  if(!presentacion) return null;
+  const m = String(presentacion).replace(',','.').match(/([\d.]+)\s*kg/i);
+  const kg = m ? parseFloat(m[1]) : null;
+  return (kg && kg>0) ? kg : null;
+}
+function calcularPrecioKiloAuto(costo, margenPct, presentacion){
+  const kg = kgDePresentacion(presentacion);
+  if(kg===null) return null;
+  if(costo===null || costo===undefined || isNaN(costo) || costo<=0) return null;
+  if(margenPct===null || margenPct===undefined || isNaN(margenPct)) return null;
+  const base = costo * (1 + (margenPct*0.5)/100);
+  return Math.ceil((base/kg)/100)*100;
+}
+
 function recalcularVentaSheet(){
   const costo = parseFloat((document.getElementById('fCosto').value||'').replace(',','.'));
   const margen = parseFloat((document.getElementById('fMargen').value||'').replace(',','.'));
+  const presentacion = document.getElementById('fPresent').value;
   const hint = document.getElementById('calcHintSheet');
   if(!isNaN(costo) && !isNaN(margen)){
     const venta = Math.round(costo*(1+margen/100));
     document.getElementById('fVenta').value = venta;
-    hint.innerHTML = `<div class="calc-hint">Calculado: costo ${fmtMoney(costo)} + ${margen}% de margen = venta ${fmtMoney(venta)}</div>`;
+    let hintTxt = `Calculado: costo ${fmtMoney(costo)} + ${margen}% de margen = venta ${fmtMoney(venta)}`;
+    const kilo = calcularPrecioKiloAuto(costo, margen, presentacion);
+    if(kilo!==null){
+      document.getElementById('fKilo').value = kilo;
+      hintTxt += ` · Suelto x kilo (costo + mitad del margen ÷ ${kgDePresentacion(presentacion)} kg): ${fmtMoney(kilo)}/kg`;
+    }
+    hint.innerHTML = `<div class="calc-hint">${hintTxt}</div>`;
   } else {
     hint.innerHTML = '';
   }
