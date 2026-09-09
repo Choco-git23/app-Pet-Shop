@@ -1299,12 +1299,26 @@ function toggleRow(id){
   renderLista();
 }
 
+/* ---------- Precio de venta a partir del costo y el margen ----------
+   El "margen" es margen sobre el precio de venta (no sobre el costo): un margen
+   del 30% significa que esos 30% quedan como ganancia sobre lo que paga el
+   cliente. Por eso la cuenta es costo ÷ (1 - margen/100), no costo × (1 + margen/100)
+   — esa segunda cuenta da un margen más chico que el que se pone (un "recargo"
+   sobre el costo, no un margen sobre la venta). Con margen 30%: costo/0.7. */
+function calcularVentaPorMargen(costo, margenPct){
+  if(costo===null || costo===undefined || isNaN(costo)) return null;
+  if(margenPct===null || margenPct===undefined || isNaN(margenPct)) return null;
+  if(margenPct>=100) return null; // un margen de 100% o más no se puede calcular (divide por cero o negativo)
+  return Math.round(costo/(1-margenPct/100));
+}
+
 function recalcularVentaInline(id){
   const costo = parseFloat((document.getElementById(`e-costo-${id}`).value||'').replace(',','.'));
   const margen = parseFloat((document.getElementById(`e-margen-${id}`).value||'').replace(',','.'));
   const presentacion = document.getElementById(`e-present-${id}`).value;
-  if(!isNaN(costo) && !isNaN(margen)){
-    document.getElementById(`e-venta-${id}`).value = Math.round(costo*(1+margen/100));
+  const venta = calcularVentaPorMargen(costo, margen);
+  if(venta!==null){
+    document.getElementById(`e-venta-${id}`).value = venta;
     const kilo = calcularPrecioKiloAuto(costo, margen, presentacion);
     if(kilo!==null) document.getElementById(`e-kilo-${id}`).value = kilo;
   }
@@ -1455,7 +1469,8 @@ function calcularPrecioKiloAuto(costo, margenPct, presentacion){
   if(kg===null) return null;
   if(costo===null || costo===undefined || isNaN(costo) || costo<=0) return null;
   if(margenPct===null || margenPct===undefined || isNaN(margenPct)) return null;
-  const base = costo * (1 + (margenPct*0.5)/100);
+  const base = calcularVentaPorMargen(costo, margenPct/2); // mitad del margen, misma cuenta costo÷(1-margen/100)
+  if(base===null) return null;
   return Math.ceil((base/kg)/100)*100;
 }
 
@@ -1464,14 +1479,18 @@ function recalcularVentaSheet(){
   const margen = parseFloat((document.getElementById('fMargen').value||'').replace(',','.'));
   const presentacion = document.getElementById('fPresent').value;
   const hint = document.getElementById('calcHintSheet');
-  if(!isNaN(costo) && !isNaN(margen)){
-    const venta = Math.round(costo*(1+margen/100));
+  if(!isNaN(margen) && margen>=100){
+    hint.innerHTML = `<div class="calc-hint" style="color:var(--rust); background:var(--rust-bg);">El margen tiene que ser menor a 100%</div>`;
+    return;
+  }
+  const venta = calcularVentaPorMargen(costo, margen);
+  if(venta!==null){
     document.getElementById('fVenta').value = venta;
-    let hintTxt = `Calculado: costo ${fmtMoney(costo)} + ${margen}% de margen = venta ${fmtMoney(venta)}`;
+    let hintTxt = `Calculado: costo ${fmtMoney(costo)} ÷ (1 - ${margen}%) = venta ${fmtMoney(venta)}`;
     const kilo = calcularPrecioKiloAuto(costo, margen, presentacion);
     if(kilo!==null){
       document.getElementById('fKilo').value = kilo;
-      hintTxt += ` · Suelto x kilo (costo + mitad del margen ÷ ${kgDePresentacion(presentacion)} kg): ${fmtMoney(kilo)}/kg`;
+      hintTxt += ` · Suelto x kilo (costo con mitad del margen ÷ ${kgDePresentacion(presentacion)} kg): ${fmtMoney(kilo)}/kg`;
     }
     hint.innerHTML = `<div class="calc-hint">${hintTxt}</div>`;
   } else {
@@ -1590,7 +1609,8 @@ function calcularNuevoPrecio(p, pct){
   if(p.costo!==null && p.costo>0){
     nuevo.costo = Math.round(p.costo*(1+pct/100));
     if(p.margenPct!==null && !isNaN(p.margenPct)){
-      nuevo.precioVenta = Math.round(nuevo.costo*(1+p.margenPct/100));
+      const ventaPorMargen = calcularVentaPorMargen(nuevo.costo, p.margenPct);
+      nuevo.precioVenta = ventaPorMargen!==null ? ventaPorMargen : Math.round(p.precioVenta*(1+pct/100));
     } else {
       nuevo.precioVenta = Math.round(p.precioVenta*(1+pct/100));
     }
