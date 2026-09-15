@@ -255,23 +255,6 @@
     border-top:1px solid var(--line);
   }
 
-  .modo-toggle{display:flex; gap:8px; margin-top:2px;}
-  .modo-toggle button{flex:1; padding:9px; border-radius:10px; border:1.5px solid var(--line-strong); background:var(--paper); font-weight:600; font-size:13px; color:var(--ink-soft); cursor:pointer;}
-  .modo-toggle button.active{background:var(--mustard); border-color:var(--mustard); color:var(--pine-2);}
-
-  .lista-paste{width:100%; min-height:140px; margin-top:10px; padding:10px 12px; border-radius:10px; border:1px solid var(--line-strong); font-size:13.5px; background:var(--paper); font-family:'IBM Plex Mono',monospace; resize:vertical;}
-
-  .match-summary{font-size:12.5px; color:var(--ink-soft); margin-top:8px;}
-  .match-list{margin-top:10px; display:flex; flex-direction:column; gap:8px;}
-  .match-item{background:var(--paper); border-radius:10px; padding:10px 12px; box-shadow:var(--shadow); border:1.5px solid transparent;}
-  .match-item.sin-match{border-color:var(--rust);}
-  .match-item .mi-linea{font-size:11.5px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .match-item select{width:100%; margin-top:6px; padding:8px 10px; border-radius:8px; border:1px solid var(--line-strong); font-size:13.5px; background:var(--bg); color:var(--ink);}
-  .match-item .mi-preview{font-size:12.5px; font-family:'IBM Plex Mono',monospace; margin-top:6px; color:var(--ink);}
-  .match-item .mi-preview .old{color:var(--ink-soft); text-decoration:line-through; margin-right:6px;}
-  .match-item .mi-preview .new{color:var(--ok-ink); font-weight:600;}
-  .match-item .mi-omit{font-size:12px; color:var(--rust); margin-top:4px;}
-
   .toast{
     position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
     background:var(--pine-2); color:#FBF8EF; padding:12px 18px; border-radius:12px; font-size:13.5px;
@@ -753,8 +736,6 @@ let vistaActual = 'lista';
 let anexoActivo = null;
 let seleccionMarcas = new Set();
 let anexoAumento = null;
-let modoAumento = 'marca'; // 'marca' | 'lista'
-let listaParsedRows = []; // [{nombre, costo, matchId, score}]
 let ready = false;
 
 let caja = [];
@@ -1182,7 +1163,7 @@ function mostrarVista(v){
   document.getElementById('fabAdd').style.display = (v==='lista' && tienePermiso('editarPrecios')) ? 'flex' : 'none';
   document.getElementById('fabCaja').style.display = (v==='caja' && tienePermiso('cargarCaja')) ? 'flex' : 'none';
   document.querySelector('.search-wrap').style.display = (v==='lista' || v==='stock') ? '' : 'none';
-  if(v==='aumento'){ seleccionMarcas = new Set(); anexoAumento = anexoActivo; modoAumento = 'marca'; listaParsedRows = []; }
+  if(v==='aumento'){ seleccionMarcas = new Set(); anexoAumento = anexoActivo; }
   if(v==='caja' && !cajaPeriodo){ cajaPeriodo='dia'; cajaRefFecha = hoyISO(); }
   render();
 }
@@ -1541,54 +1522,14 @@ async function guardarProducto(){
 function renderAumento(){
   const cont = document.getElementById('vistaAumento');
 
-  const anexoSelectHtml = `
-    <div class="field">
-      <label>Anexo</label>
-      <select id="anexoAumentoSelect" onchange="cambiarAnexoAumento(this.value)" style="border:1px solid var(--line-strong); border-radius:9px; padding:10px 12px; font-size:14.5px; background:var(--paper);">
-        ${anexos.map(a=>`<option value="${a.id}" ${a.id===anexoAumento?'selected':''}>${escapeHtml(a.nombre)}</option>`).join('')}
-      </select>
-    </div>
-
-    <div class="modo-toggle">
-      <button class="${modoAumento==='marca'?'active':''}" onclick="cambiarModoAumento('marca')">Por marca (%)</button>
-      <button class="${modoAumento==='lista'?'active':''}" onclick="cambiarModoAumento('lista')">Por lista (pegar precios)</button>
-    </div>
-  `;
-
-  if(modoAumento==='lista'){
-    const html = `
-      <div style="margin-top:14px;">
-        ${anexoSelectHtml}
-
-        <div class="pct-hint" style="margin:12px 0 8px;">Pegá la lista del proveedor (una línea por producto, con el precio al final de cada línea) y el margen que le aplicás a toda la lista. Vamos a buscar cada producto en este anexo para actualizarle el costo, la venta y el precio por kilo.</div>
-
-        <div class="field">
-          <label>Margen a aplicar (%)</label>
-          <input type="text" inputmode="decimal" id="listaMargenInput" placeholder="Ej: 30" oninput="renderListaResultados()"
-            style="border:1px solid var(--line-strong); border-radius:9px; padding:10px 12px; font-size:16px; background:var(--paper); width:100%;">
-        </div>
-
-        <textarea class="lista-paste" id="listaPasteInput" placeholder="Eukanuba cat ad x 15    $ 105.630,00
-Eukanuba cat ad x 7,5    $ 54.600,00
-Proplan ad/med x 15    $ 101.341,38" oninput="onCambiarTextoLista()"></textarea>
-
-        <div class="match-summary" id="listaSummary"></div>
-        <div class="match-list" id="listaMatchList"></div>
-
-        <div class="apply-bar">
-          <button class="btn btn-mustard" style="width:100%; padding:13px;" id="applyListaBtn" onclick="aplicarActualizacionLista()" disabled>Actualizar precios</button>
-          ${historial.length ? `<button class="btn btn-ghost" style="width:100%; margin-top:8px;" onclick="deshacerUltimo()">Deshacer el último aumento aplicado</button>` : ''}
-        </div>
-      </div>
-    `;
-    cont.innerHTML = html;
-    renderListaResultados();
-    return;
-  }
-
   let html = `
     <div style="margin-top:14px;">
-      ${anexoSelectHtml}
+      <div class="field">
+        <label>Anexo</label>
+        <select id="anexoAumentoSelect" onchange="cambiarAnexoAumento(this.value)" style="border:1px solid var(--line-strong); border-radius:9px; padding:10px 12px; font-size:14.5px; background:var(--paper);">
+          ${anexos.map(a=>`<option value="${a.id}" ${a.id===anexoAumento?'selected':''}>${escapeHtml(a.nombre)}</option>`).join('')}
+        </select>
+      </div>
 
       <div class="pct-hint" style="margin:12px 0 8px;">Elegí una o más marcas de este anexo y el porcentaje que te avisó el proveedor. Si el producto tiene costo y margen cargados, se actualiza el costo y se recalcula la venta manteniendo el margen; si no, se aplica el porcentaje directo al precio de venta.</div>
       <div class="pct-input-row">
@@ -1624,21 +1565,10 @@ Proplan ad/med x 15    $ 101.341,38" oninput="onCambiarTextoLista()"></textarea>
 }
 
 function cambiarAnexoAumento(id){
-  const textoPrevio = modoAumento==='lista' ? (document.getElementById('listaPasteInput')?.value || '') : '';
   anexoAumento = id;
   seleccionMarcas = new Set();
-  listaParsedRows = [];
-  renderAumento();
-  if(modoAumento==='lista' && textoPrevio){
-    const ta = document.getElementById('listaPasteInput');
-    if(ta){ ta.value = textoPrevio; onCambiarTextoLista(); }
-  }
-}
-
-function cambiarModoAumento(m){
-  modoAumento = m;
-  listaParsedRows = [];
-  renderAumento();
+  renderMarcaList();
+  actualizarPreview();
 }
 
 function renderMarcaList(){
@@ -1756,187 +1686,6 @@ async function deshacerUltimo(){
   await guardarHistorial();
   render();
   mostrarToast('Aumento deshecho');
-}
-
-/* ---------- AUMENTO POR LISTA (pegar precios de proveedor) ---------- */
-function parsePrecioTexto(raw){
-  if(raw===null || raw===undefined) return null;
-  let s = String(raw).trim();
-  if(!s || s==='-' || s==='—') return null;
-  s = s.replace(/\$/g,'').replace(/\s/g,'');
-  if(!s) return null;
-  const hasComma = s.includes(',');
-  const hasDot = s.includes('.');
-  if(hasComma && hasDot){
-    s = s.replace(/\./g,'').replace(',','.');
-  } else if(hasComma){
-    s = s.replace(',','.');
-  } else if(hasDot){
-    const parts = s.split('.');
-    if(parts.length>1 && parts[parts.length-1].length===3){
-      s = parts.join('');
-    }
-  }
-  const n = parseFloat(s);
-  return isNaN(n) ? null : n;
-}
-
-function parsearLineaLista(line){
-  const raw = (line||'').trim();
-  if(!raw) return null;
-  let nombre = '', precioTxt = '';
-  const tabParts = raw.split('\t').map(s=>s.trim()).filter(Boolean);
-  if(tabParts.length>=2){
-    precioTxt = tabParts[tabParts.length-1];
-    nombre = tabParts.slice(0,-1).join(' ');
-  } else {
-    const m = raw.match(/^(.*?)\s+(\$?\s*-?[\d.,]+|-)\s*$/);
-    if(m && m[1].trim()){
-      nombre = m[1].trim();
-      precioTxt = m[2].trim();
-    } else {
-      nombre = raw;
-      precioTxt = '';
-    }
-  }
-  if(!nombre) return null;
-  return { nombre, costo: parsePrecioTexto(precioTxt) };
-}
-
-function normalizarTextoMatch(s){
-  return (s||'').toString().toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g,'')
-    .replace(/[^a-z0-9\s]/g,' ')
-    .replace(/\s+/g,' ')
-    .trim();
-}
-
-function similitudTexto(a, b){
-  const ta = new Set(normalizarTextoMatch(a).split(' ').filter(Boolean));
-  const tb = new Set(normalizarTextoMatch(b).split(' ').filter(Boolean));
-  if(!ta.size || !tb.size) return 0;
-  let inter = 0;
-  ta.forEach(t=>{ if(tb.has(t)) inter++; });
-  return (2*inter)/(ta.size+tb.size);
-}
-
-function mejorMatchProducto(nombreLinea, candidatos){
-  let best = null, bestScore = 0;
-  candidatos.forEach(p=>{
-    const texto = `${p.marca} ${p.desc} ${p.presentacion||''}`;
-    const score = similitudTexto(nombreLinea, texto);
-    if(score > bestScore){ bestScore = score; best = p; }
-  });
-  return { producto: best, score: bestScore };
-}
-
-function onCambiarTextoLista(){
-  const el = document.getElementById('listaPasteInput');
-  const texto = el ? el.value : '';
-  const candidatos = productos.filter(p=>p.anexoId===anexoAumento);
-  const lineas = texto.split('\n').map(l=>l.trim()).filter(Boolean);
-  listaParsedRows = lineas.map(linea=>{
-    const parsed = parsearLineaLista(linea);
-    if(!parsed) return null;
-    const { producto, score } = mejorMatchProducto(parsed.nombre, candidatos);
-    return {
-      lineaOriginal: linea,
-      nombre: parsed.nombre,
-      costo: parsed.costo,
-      matchId: (producto && score>=0.4) ? producto.id : '',
-      score
-    };
-  }).filter(Boolean);
-  renderListaResultados();
-}
-
-function renderListaResultados(){
-  const listEl = document.getElementById('listaMatchList');
-  const summaryEl = document.getElementById('listaSummary');
-  const applyBtn = document.getElementById('applyListaBtn');
-  if(!listEl || !summaryEl || !applyBtn) return;
-
-  const margenRaw = document.getElementById('listaMargenInput')?.value;
-  const margen = parseFloat((margenRaw||'').replace(',','.'));
-  const candidatos = productos.filter(p=>p.anexoId===anexoAumento);
-
-  if(!listaParsedRows.length){
-    listEl.innerHTML = '';
-    summaryEl.textContent = '';
-    applyBtn.disabled = true;
-    applyBtn.textContent = 'Actualizar precios';
-    return;
-  }
-
-  let sinMatch = 0, sinCosto = 0;
-
-  listEl.innerHTML = listaParsedRows.map((row, i)=>{
-    const producto = row.matchId ? candidatos.find(p=>p.id===row.matchId) : null;
-    if(!row.matchId) sinMatch++;
-    if(row.costo===null) sinCosto++;
-
-    let previewHtml = '';
-    if(producto && row.costo!==null && !isNaN(margen)){
-      const nuevaVenta = calcularVentaPorMargen(row.costo, margen);
-      const nuevoKilo = calcularPrecioKiloAuto(row.costo, producto.presentacion);
-      previewHtml = `<div class="mi-preview">Costo: <span class="old">${fmtMoney(producto.costo)}</span><span class="new">${fmtMoney(row.costo)}</span>${nuevaVenta!==null ? ` · Venta: <span class="old">${fmtMoney(producto.precioVenta)}</span><span class="new">${fmtMoney(nuevaVenta)}</span>` : ''}${nuevoKilo!==null ? ` · Kilo: <span class="new">${fmtMoney(nuevoKilo)}</span>` : ''}</div>`;
-    }
-
-    const opciones = `<option value="">— sin coincidencia (omitir) —</option>` +
-      candidatos.map(p=>`<option value="${p.id}" ${row.matchId===p.id?'selected':''}>${escapeHtml(p.marca)} — ${escapeHtml(p.desc)}${p.presentacion?' ('+escapeHtml(p.presentacion)+')':''}</option>`).join('');
-
-    return `<div class="match-item ${!row.matchId?'sin-match':''}">
-      <div class="mi-linea">${escapeHtml(row.lineaOriginal)}</div>
-      <select onchange="cambiarMatchLista(${i}, this.value)">${opciones}</select>
-      ${row.costo===null ? `<div class="mi-omit">No se detectó un precio en esta línea — se omite.</div>` : ''}
-      ${previewHtml}
-    </div>`;
-  }).join('');
-
-  const aplicables = listaParsedRows.filter(row=> row.matchId && row.costo!==null).length;
-  summaryEl.textContent = `${listaParsedRows.length} línea${listaParsedRows.length===1?'':'s'} pegada${listaParsedRows.length===1?'':'s'} · ${aplicables} se ${aplicables===1?'va':'van'} a actualizar${sinMatch?` · ${sinMatch} sin coincidencia`:''}${sinCosto?` · ${sinCosto} sin precio`:''}`;
-
-  applyBtn.disabled = aplicables===0 || isNaN(margen);
-  applyBtn.textContent = isNaN(margen) ? 'Poné el margen a aplicar' : `Actualizar ${aplicables} producto${aplicables===1?'':'s'}`;
-}
-
-function cambiarMatchLista(i, val){
-  if(!listaParsedRows[i]) return;
-  listaParsedRows[i].matchId = val ? parseInt(val,10) : '';
-  renderListaResultados();
-}
-
-async function aplicarActualizacionLista(){
-  if(!tienePermiso('aumentarPrecios')) return;
-  const margenRaw = document.getElementById('listaMargenInput')?.value;
-  const margen = parseFloat((margenRaw||'').replace(',','.'));
-  if(isNaN(margen)) return;
-  const aplicables = listaParsedRows.filter(row=> row.matchId && row.costo!==null);
-  if(!aplicables.length) return;
-
-  if(!(await confirmarAccion(`¿Actualizar el costo (margen ${margen}%) de ${aplicables.length} producto(s) en ${nombreAnexo(anexoAumento)}?`, {textoOk:'Actualizar'}))) return;
-
-  historial.push({ ts: Date.now(), anexoId:anexoAumento, marcas:['(lista pegada)'], pct: margen, snapshot: JSON.parse(JSON.stringify(productos)) });
-  if(historial.length>5) historial.shift();
-
-  productos = productos.map(p=>{
-    const row = aplicables.find(r=>r.matchId===p.id);
-    if(!row) return p;
-    const nuevo = {...p, costo: row.costo, margenPct: margen};
-    const venta = calcularVentaPorMargen(row.costo, margen);
-    nuevo.precioVenta = venta!==null ? venta : p.precioVenta;
-    const kilo = calcularPrecioKiloAuto(row.costo, p.presentacion);
-    if(kilo!==null) nuevo.precioKilo = kilo;
-    return nuevo;
-  });
-
-  await guardarStorage();
-  await guardarHistorial();
-  listaParsedRows = [];
-  const ta = document.getElementById('listaPasteInput');
-  if(ta) ta.value = '';
-  render();
-  mostrarToast(`Listo: ${aplicables.length} producto(s) actualizado(s)`);
 }
 
 /* ---------- STOCK ---------- */
