@@ -1305,11 +1305,22 @@ function toggleRow(id){
    cliente. Por eso la cuenta es costo ÷ (1 - margen/100), no costo × (1 + margen/100)
    — esa segunda cuenta da un margen más chico que el que se pone (un "recargo"
    sobre el costo, no un margen sobre la venta). Con margen 30%: costo/0.7. */
+/* Redondeo de precios: SIEMPRE hacia arriba al múltiplo de 100 más cercano.
+   Ej: 10542 → 10600 · 10675 → 10700 · 1456 → 1500 · 15345 → 15400.
+   Un precio que ya es múltiplo exacto de 100 queda igual (10500 → 10500).
+   El -0.000001 evita que restos decimales del cálculo (10500.0000001)
+   hagan saltar el precio al escalón de arriba sin motivo. */
+function redondearArriba100(n){
+  const v = Math.round(Number(n)*100)/100;
+  if(!isFinite(v) || v<=0) return 0;
+  return Math.ceil((v-0.000001)/100)*100;
+}
+
 function calcularVentaPorMargen(costo, margenPct){
   if(costo===null || costo===undefined || isNaN(costo)) return null;
   if(margenPct===null || margenPct===undefined || isNaN(margenPct)) return null;
   if(margenPct>=100) return null; // un margen de 100% o más no se puede calcular (divide por cero o negativo)
-  return Math.round(costo/(1-margenPct/100));
+  return redondearArriba100(costo/(1-margenPct/100));
 }
 
 function recalcularVentaInline(id){
@@ -1334,7 +1345,7 @@ async function guardarEdicionInline(id){
   const margenRaw = document.getElementById(`e-margen-${id}`).value;
   p.costo = costoRaw==='' ? null : Math.round(parseFloat(costoRaw.replace(',','.'))||0);
   p.margenPct = margenRaw==='' ? null : parseFloat(margenRaw.replace(',','.'));
-  p.precioVenta = Math.round(parseFloat((document.getElementById(`e-venta-${id}`).value||'0').replace(',','.'))||0);
+  p.precioVenta = redondearArriba100(parseFloat((document.getElementById(`e-venta-${id}`).value||'0').replace(',','.'))||0);
   p.precioKilo = Math.round(parseFloat((document.getElementById(`e-kilo-${id}`).value||'0').replace(',','.'))||0);
   p.stock = Math.round(parseFloat((document.getElementById(`e-stock-${id}`).value||'0').replace(',','.'))||0);
   const stockMinRaw = document.getElementById(`e-stockmin-${id}`).value;
@@ -1467,7 +1478,7 @@ function calcularPrecioKiloAuto(costo, presentacion){
   if(kg===null) return null;
   if(costo===null || costo===undefined || isNaN(costo) || costo<=0) return null;
   const base = costo*1.5; // costo + 50% (no depende del margen cargado en el producto)
-  return Math.round(base/kg);
+  return redondearArriba100(base/kg);
 }
 
 function recalcularVentaSheet(){
@@ -1502,7 +1513,7 @@ async function guardarProducto(){
   const margenRaw = document.getElementById('fMargen').value;
   const costo = costoRaw==='' ? null : Math.round(parseFloat(costoRaw.replace(',','.'))||0);
   const margenPct = margenRaw==='' ? null : parseFloat(margenRaw.replace(',','.'));
-  const precioVenta = Math.round(parseFloat((document.getElementById('fVenta').value||'0').replace(',','.'))||0);
+  const precioVenta = redondearArriba100(parseFloat((document.getElementById('fVenta').value||'0').replace(',','.'))||0);
   const precioKilo = Math.round(parseFloat((document.getElementById('fKilo').value||'0').replace(',','.'))||0);
   const stock = Math.round(parseFloat((document.getElementById('fStock').value||'0').replace(',','.'))||0);
   const stockMinRaw = document.getElementById('fStockMin').value;
@@ -1605,15 +1616,15 @@ function calcularNuevoPrecio(p, pct){
     nuevo.costo = Math.round(p.costo*(1+pct/100));
     if(p.margenPct!==null && !isNaN(p.margenPct)){
       const ventaPorMargen = calcularVentaPorMargen(nuevo.costo, p.margenPct);
-      nuevo.precioVenta = ventaPorMargen!==null ? ventaPorMargen : Math.round(p.precioVenta*(1+pct/100));
+      nuevo.precioVenta = ventaPorMargen!==null ? ventaPorMargen : redondearArriba100(p.precioVenta*(1+pct/100));
     } else {
-      nuevo.precioVenta = Math.round(p.precioVenta*(1+pct/100));
+      nuevo.precioVenta = redondearArriba100(p.precioVenta*(1+pct/100));
     }
   } else {
-    nuevo.precioVenta = Math.round(p.precioVenta*(1+pct/100));
+    nuevo.precioVenta = redondearArriba100(p.precioVenta*(1+pct/100));
   }
   if(p.precioKilo>0){
-    nuevo.precioKilo = Math.round(p.precioKilo*(1+pct/100));
+    nuevo.precioKilo = redondearArriba100(p.precioKilo*(1+pct/100));
   }
   return nuevo;
 }
