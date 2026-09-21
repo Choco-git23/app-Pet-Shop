@@ -147,6 +147,27 @@
   .row-desc{flex:1; min-width:0;}
   .row-desc .d1{font-size:14.5px; font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .row-desc .d2{font-size:11.5px; color:var(--ink-soft); margin-top:2px;}
+  .row-thumb{
+    width:44px; height:44px; border-radius:9px; flex-shrink:0; object-fit:cover;
+    background:var(--paper-2, #f2f0ea); border:1px solid rgba(0,0,0,.06);
+  }
+  .row-thumb-placeholder{
+    width:44px; height:44px; border-radius:9px; flex-shrink:0;
+    background:var(--paper-2, #f2f0ea); border:1px solid rgba(0,0,0,.06);
+    display:flex; align-items:center; justify-content:center; font-size:18px; color:var(--ink-soft);
+  }
+  .foto-field{display:flex; align-items:center; gap:12px; margin:6px 0 10px;}
+  .foto-preview{
+    width:64px; height:64px; border-radius:12px; object-fit:cover;
+    background:var(--paper-2, #f2f0ea); border:1px solid rgba(0,0,0,.08); flex-shrink:0;
+  }
+  .foto-preview-placeholder{
+    width:64px; height:64px; border-radius:12px; flex-shrink:0;
+    background:var(--paper-2, #f2f0ea); border:1px dashed rgba(0,0,0,.18);
+    display:flex; align-items:center; justify-content:center; font-size:24px; color:var(--ink-soft);
+  }
+  .foto-actions{display:flex; flex-direction:column; gap:6px;}
+  .foto-actions .btn{padding:7px 12px; font-size:12.5px;}
   .row-prices{text-align:right; display:flex; flex-direction:column; gap:2px; flex-shrink:0;}
   .row-prices .venta{font-size:15px; font-weight:600; color:var(--pine-2);}
   .row-prices .kilo{font-size:11.5px; color:var(--ink-soft);}
@@ -478,6 +499,17 @@
           <input type="text" id="fDesc" placeholder="Ej: correa nylon 1.2m">
         </div>
         <div class="field">
+          <label>Foto (opcional)</label>
+          <div class="foto-field">
+            <div id="fFotoPreviewWrap"><div class="foto-preview-placeholder">🐾</div></div>
+            <div class="foto-actions">
+              <input type="file" id="fFotoInput" accept="image/*" capture="environment" style="display:none;" onchange="onFotoSeleccionada(event,'f')">
+              <button type="button" class="btn btn-ghost" onclick="document.getElementById('fFotoInput').click()">Elegir foto</button>
+              <button type="button" class="btn btn-ghost" id="fFotoQuitarBtn" style="display:none;" onclick="quitarFoto('f')">Quitar</button>
+            </div>
+          </div>
+        </div>
+        <div class="field">
           <label>Presentación (opcional)</label>
           <input type="text" id="fPresent" placeholder="Ej: 15 kg, x3 unid, 500 ml" oninput="recalcularVentaSheet()">
         </div>
@@ -732,6 +764,11 @@ let currentRole = null;   // 'owner' | 'viewer' | null
 let currentName = '';
 let currentPermKey = null; // 'yoel' | 'deni' | null (null si es dueña)
 let editandoId = null;
+/* Fotos de producto: cambios pendientes antes de guardar, por "scope" ('f' = sheet
+   de alta, 'e<id>' = edición inline de un producto existente). undefined = sin cambios
+   (se conserva la foto ya guardada), null = se pidió quitar la foto, string = nueva
+   foto en base64 lista para guardar. */
+const fotoTemp = {};
 let vistaActual = 'lista';
 let anexoActivo = null;
 let seleccionMarcas = new Set();
@@ -1107,6 +1144,7 @@ async function cargarDatos(){
       if(p.precioKilo===undefined) p.precioKilo = 0;
       if(p.stock===undefined) p.stock = 0;
       if(p.stockMinimo===undefined) p.stockMinimo = null;
+      if(p.foto===undefined) p.foto = null;
     });
     if(!anexos.find(a=>a.id==='alimentos') && productos.some(p=>p.anexoId==='alimentos')){
       anexos.unshift({id:'alimentos', nombre:'Alimentos'});
@@ -1239,6 +1277,7 @@ function renderLista(){
         const editable = tienePermiso('editarPrecios');
         html += `<div class="row ${open?'open':''}" id="row-${p.id}">
           <div class="row-main" ${editable ? `onclick="toggleRow(${p.id})" style="cursor:pointer;"` : 'style="cursor:default;"'}>
+            ${p.foto ? `<img class="row-thumb" src="${escapeAttr(p.foto)}" alt="">` : `<div class="row-thumb-placeholder">🐾</div>`}
             <div class="row-desc">
               <div class="d1">${escapeHtml(p.desc || '(sin descripción)')}</div>
               <div class="d2">${escapeHtml(subt)}</div>
@@ -1259,6 +1298,17 @@ function renderLista(){
                 <div class="field"><label>Marca</label><input type="text" id="e-marca-${p.id}" value="${escapeAttr(p.marca)}"></div>
               </div>
               <div class="field"><label>Descripción</label><input type="text" id="e-desc-${p.id}" value="${escapeAttr(p.desc)}"></div>
+              <div class="field">
+                <label>Foto</label>
+                <div class="foto-field">
+                  <div id="e-fotoPreviewWrap-${p.id}">${p.foto ? `<img class="foto-preview" src="${escapeAttr(p.foto)}" alt="">` : `<div class="foto-preview-placeholder">🐾</div>`}</div>
+                  <div class="foto-actions">
+                    <input type="file" id="e-fotoInput-${p.id}" accept="image/*" capture="environment" style="display:none;" onchange="onFotoSeleccionada(event,'e${p.id}')">
+                    <button type="button" class="btn btn-ghost" onclick="document.getElementById('e-fotoInput-${p.id}').click()">Elegir foto</button>
+                    <button type="button" class="btn btn-ghost" id="e-fotoQuitarBtn-${p.id}" style="${p.foto?'':'display:none;'}" onclick="quitarFoto('e${p.id}')">Quitar</button>
+                  </div>
+                </div>
+              </div>
               <div class="field"><label>Presentación</label><input type="text" id="e-present-${p.id}" value="${escapeAttr(p.presentacion||'')}" oninput="recalcularVentaInline(${p.id})"></div>
               <div class="field-row">
                 <div class="field"><label>Costo</label><div class="money-wrap"><span class="money-sign">$</span><input type="text" inputmode="numeric" id="e-costo-${p.id}" value="${p.costo ?? ''}" oninput="recalcularVentaInline(${p.id})"></div></div>
@@ -1295,6 +1345,7 @@ function cambiarAnexo(id){
 
 function toggleRow(id){
   if(!tienePermiso('editarPrecios')) return;
+  fotoTemp['e'+id] = undefined;
   editandoId = editandoId===id ? null : id;
   renderLista();
 }
@@ -1321,6 +1372,58 @@ function calcularVentaPorMargen(costo, margenPct){
   if(margenPct===null || margenPct===undefined || isNaN(margenPct)) return null;
   if(margenPct>=100) return null; // un margen de 100% o más no se puede calcular (divide por cero o negativo)
   return redondearArriba100(costo/(1-margenPct/100));
+}
+
+/* ---------- Foto de producto ----------
+   Las fotos se guardan como data URI (base64) dentro del propio producto, así
+   viajan con el resto de los datos sin depender de un servidor de archivos aparte.
+   Para que el archivo no crezca demasiado (hay cientos de productos), cada foto se
+   redimensiona en el navegador a un cuadrado de hasta 300px y se comprime a JPEG
+   antes de guardarla — de una foto de celular de varios MB queda algo de ~20-40 KB. */
+function comprimirImagenAFoto(file){
+  return new Promise((resolve, reject)=>{
+    const lector = new FileReader();
+    lector.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    lector.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('No se pudo leer la imagen'));
+      img.onload = () => {
+        const MAX = 300;
+        let w = img.width, h = img.height;
+        if(w>h){ if(w>MAX){ h = Math.round(h*MAX/w); w = MAX; } }
+        else { if(h>MAX){ w = Math.round(w*MAX/h); h = MAX; } }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.src = lector.result;
+    };
+    lector.readAsDataURL(file);
+  });
+}
+async function onFotoSeleccionada(event, scope){
+  const file = event.target.files && event.target.files[0];
+  event.target.value = '';
+  if(!file) return;
+  try{
+    const dataUri = await comprimirImagenAFoto(file);
+    fotoTemp[scope] = dataUri;
+    const wrap = document.getElementById(scope==='f' ? 'fFotoPreviewWrap' : `e-fotoPreviewWrap-${scope.slice(1)}`);
+    if(wrap) wrap.innerHTML = `<img class="foto-preview" src="${dataUri}" alt="">`;
+    const btnQuitar = document.getElementById(scope==='f' ? 'fFotoQuitarBtn' : `e-fotoQuitarBtn-${scope.slice(1)}`);
+    if(btnQuitar) btnQuitar.style.display = '';
+  }catch(e){
+    console.error(e);
+    mostrarToast('No se pudo procesar la foto');
+  }
+}
+function quitarFoto(scope){
+  fotoTemp[scope] = null;
+  const wrap = document.getElementById(scope==='f' ? 'fFotoPreviewWrap' : `e-fotoPreviewWrap-${scope.slice(1)}`);
+  if(wrap) wrap.innerHTML = '<div class="foto-preview-placeholder">🐾</div>';
+  const btnQuitar = document.getElementById(scope==='f' ? 'fFotoQuitarBtn' : `e-fotoQuitarBtn-${scope.slice(1)}`);
+  if(btnQuitar) btnQuitar.style.display = 'none';
 }
 
 function recalcularVentaInline(id){
@@ -1350,6 +1453,8 @@ async function guardarEdicionInline(id){
   p.stock = Math.round(parseFloat((document.getElementById(`e-stock-${id}`).value||'0').replace(',','.'))||0);
   const stockMinRaw = document.getElementById(`e-stockmin-${id}`).value;
   p.stockMinimo = stockMinRaw==='' ? null : Math.round(parseFloat(stockMinRaw.replace(',','.'))||0);
+  const fotoScope = 'e'+id;
+  if(fotoTemp[fotoScope] !== undefined){ p.foto = fotoTemp[fotoScope]; fotoTemp[fotoScope] = undefined; }
   editandoId = null;
   await guardarStorage();
   render();
@@ -1451,6 +1556,9 @@ function abrirNuevoProducto(){
   document.getElementById('fStock').value = '';
   document.getElementById('fStockMin').value = '';
   document.getElementById('calcHintSheet').innerHTML = '';
+  fotoTemp['f'] = undefined;
+  document.getElementById('fFotoPreviewWrap').innerHTML = '<div class="foto-preview-placeholder">🐾</div>';
+  document.getElementById('fFotoQuitarBtn').style.display = 'none';
   poblarDatalist();
   document.getElementById('productSheetBackdrop').classList.add('show');
 }
@@ -1520,8 +1628,10 @@ async function guardarProducto(){
   const stockMinimo = stockMinRaw==='' ? null : Math.round(parseFloat(stockMinRaw.replace(',','.'))||0);
   if(!marca){ mostrarToast('Poné una marca'); return; }
   if(!precioVenta){ mostrarToast('Poné un precio de venta (o costo + margen para calcularlo)'); return; }
+  const foto = fotoTemp['f'] ?? null;
   const nextId = productos.length ? Math.max(...productos.map(p=>p.id))+1 : 1;
-  productos.push({id:nextId, anexoId, marca, desc, presentacion, costo, margenPct, precioVenta, precioKilo, stock, stockMinimo});
+  productos.push({id:nextId, anexoId, marca, desc, presentacion, costo, margenPct, precioVenta, precioKilo, stock, stockMinimo, foto});
+  fotoTemp['f'] = undefined;
   await guardarStorage();
   cerrarProductSheet();
   anexoActivo = anexoId;
