@@ -168,6 +168,20 @@
   }
   .foto-actions{display:flex; flex-direction:column; gap:6px;}
   .foto-actions .btn{padding:7px 12px; font-size:12.5px;}
+  .row-thumb, .foto-preview{cursor:zoom-in;}
+  .foto-lightbox{
+    display:none; position:fixed; inset:0; z-index:90; background:rgba(10,20,18,0.88);
+    align-items:center; justify-content:center; padding:24px; box-sizing:border-box;
+  }
+  .foto-lightbox.show{display:flex;}
+  .foto-lightbox img{
+    max-width:100%; max-height:100%; border-radius:14px; box-shadow:0 12px 30px rgba(0,0,0,0.4);
+    object-fit:contain;
+  }
+  .foto-lightbox-close{
+    position:absolute; top:18px; right:18px; width:38px; height:38px; border-radius:50%;
+    border:none; background:rgba(255,255,255,0.15); color:#fff; font-size:18px; cursor:pointer;
+  }
   .row-prices{text-align:right; display:flex; flex-direction:column; gap:2px; flex-shrink:0;}
   .row-prices .venta{font-size:15px; font-weight:600; color:var(--pine-2);}
   .row-prices .kilo{font-size:11.5px; color:var(--ink-soft);}
@@ -716,6 +730,12 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Lightbox: ver la foto del producto en grande -->
+<div class="foto-lightbox" id="fotoLightbox" onclick="cerrarFotoLightbox()">
+  <button class="foto-lightbox-close" onclick="cerrarFotoLightbox()">✕</button>
+  <img id="fotoLightboxImg" src="" alt="">
+</div>
 
 <!-- SDK de Firebase (independiente de Claude): permite que los 3 dispositivos
      lean y escriban la misma base de datos en la nube. Si no se configura el
@@ -1277,7 +1297,7 @@ function renderLista(){
         const editable = tienePermiso('editarPrecios');
         html += `<div class="row ${open?'open':''}" id="row-${p.id}">
           <div class="row-main" ${editable ? `onclick="toggleRow(${p.id})" style="cursor:pointer;"` : 'style="cursor:default;"'}>
-            ${p.foto ? `<img class="row-thumb" src="${escapeAttr(p.foto)}" alt="">` : `<div class="row-thumb-placeholder">🐾</div>`}
+            ${p.foto ? `<img class="row-thumb" src="${escapeAttr(p.foto)}" alt="" onclick="abrirFotoLightbox(this.src, event)">` : `<div class="row-thumb-placeholder">🐾</div>`}
             <div class="row-desc">
               <div class="d1">${escapeHtml(p.desc || '(sin descripción)')}</div>
               <div class="d2">${escapeHtml(subt)}</div>
@@ -1301,7 +1321,7 @@ function renderLista(){
               <div class="field">
                 <label>Foto</label>
                 <div class="foto-field">
-                  <div id="e-fotoPreviewWrap-${p.id}">${p.foto ? `<img class="foto-preview" src="${escapeAttr(p.foto)}" alt="">` : `<div class="foto-preview-placeholder">🐾</div>`}</div>
+                  <div id="e-fotoPreviewWrap-${p.id}">${p.foto ? `<img class="foto-preview" src="${escapeAttr(p.foto)}" alt="" onclick="abrirFotoLightbox(this.src, event)">` : `<div class="foto-preview-placeholder">🐾</div>`}</div>
                   <div class="foto-actions">
                     <input type="file" id="e-fotoInput-${p.id}" accept="image/*" capture="environment" style="display:none;" onchange="onFotoSeleccionada(event,'e${p.id}')">
                     <button type="button" class="btn btn-ghost" onclick="document.getElementById('e-fotoInput-${p.id}').click()">Elegir foto</button>
@@ -1410,7 +1430,7 @@ async function onFotoSeleccionada(event, scope){
     const dataUri = await comprimirImagenAFoto(file);
     fotoTemp[scope] = dataUri;
     const wrap = document.getElementById(scope==='f' ? 'fFotoPreviewWrap' : `e-fotoPreviewWrap-${scope.slice(1)}`);
-    if(wrap) wrap.innerHTML = `<img class="foto-preview" src="${dataUri}" alt="">`;
+    if(wrap) wrap.innerHTML = `<img class="foto-preview" src="${dataUri}" alt="" onclick="abrirFotoLightbox(this.src, event)">`;
     const btnQuitar = document.getElementById(scope==='f' ? 'fFotoQuitarBtn' : `e-fotoQuitarBtn-${scope.slice(1)}`);
     if(btnQuitar) btnQuitar.style.display = '';
   }catch(e){
@@ -1424,6 +1444,16 @@ function quitarFoto(scope){
   if(wrap) wrap.innerHTML = '<div class="foto-preview-placeholder">🐾</div>';
   const btnQuitar = document.getElementById(scope==='f' ? 'fFotoQuitarBtn' : `e-fotoQuitarBtn-${scope.slice(1)}`);
   if(btnQuitar) btnQuitar.style.display = 'none';
+}
+function abrirFotoLightbox(src, event){
+  if(event) event.stopPropagation();
+  if(!src) return;
+  document.getElementById('fotoLightboxImg').src = src;
+  document.getElementById('fotoLightbox').classList.add('show');
+}
+function cerrarFotoLightbox(){
+  document.getElementById('fotoLightbox').classList.remove('show');
+  document.getElementById('fotoLightboxImg').src = '';
 }
 
 function recalcularVentaInline(id){
